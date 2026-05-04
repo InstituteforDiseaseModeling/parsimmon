@@ -9,8 +9,9 @@ filtering, and attribute navigation never trigger loading.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Generic, Iterator, TypeVar
+from typing import Any, Generic, TypeVar
 
 import sciris as sc
 
@@ -18,6 +19,8 @@ T = TypeVar("T")
 
 # sentinel distinguishing "not yet loaded" from None (a valid result value)
 _UNLOADED = object()
+# sentinel distinguishing "caller provided no value" from None (also a valid result value)
+_MISSING = object()
 
 
 def _get_nested(d, dotted_key):
@@ -39,11 +42,14 @@ def _get_meta_value(metadata, key):
 
 
 class _SimEntry:
-    __slots__ = ("metadata", "_value", "_cache_key", "_backend")
+    __slots__ = ("_backend", "_cache_key", "_value", "metadata")
 
-    def __init__(self, metadata, value=None, cache_key=None, backend=None):
+    def __init__(self, metadata, value=_MISSING, cache_key=None, backend=None):
         self.metadata = metadata if isinstance(metadata, sc.objdict) else sc.objdict(metadata)
-        self._value = _UNLOADED if value is None and cache_key is not None else value
+        if value is _MISSING:
+            self._value = _UNLOADED if cache_key is not None else None
+        else:
+            self._value = value
         self._cache_key = cache_key
         self._backend = backend
 
@@ -67,16 +73,16 @@ class SimResult(Generic[T]):
         self._entries = list(entries)
 
     @classmethod
-    def from_entries(cls, entries) -> "SimResult[T]":
+    def from_entries(cls, entries) -> SimResult[T]:
         return cls(entries)
 
     @classmethod
-    def load(cls, path_or_backend) -> "SimResult":
+    def load(cls, path_or_backend) -> SimResult:
         return cls.from_cache(path_or_backend)
 
     @classmethod
-    def from_cache(cls, path_or_backend) -> "SimResult":
-        from .cache import SimFileCache, SimCacheBase  # type: ignore[import]
+    def from_cache(cls, path_or_backend) -> SimResult:
+        from .cache import SimCacheBase, SimFileCache  # type: ignore[import]
 
         if isinstance(path_or_backend, (str, Path)):
             backend = SimFileCache(Path(path_or_backend))
@@ -90,7 +96,7 @@ class SimResult(Generic[T]):
         return cls(entries)
 
     @classmethod
-    def from_values(cls, values, metadata_list) -> "SimResult":
+    def from_values(cls, values, metadata_list) -> SimResult:
         if len(values) != len(metadata_list):
             raise ValueError(
                 f"values and metadata_list must have the same length ({len(values)} vs {len(metadata_list)})"
@@ -125,6 +131,11 @@ class SimResult(Generic[T]):
         parameter_sets = {e.metadata.parameter_set for e in self._entries}
         groups = {e.metadata.group for e in self._entries}
 
+        if name in parameter_sets and name in groups:
+            raise AttributeError(
+                f"'{name}' exists as both a parameter set name and a group name; filter explicitly to disambiguate"
+            )
+
         # if entries span multiple parameter sets, resolve by parameter_set first
         if len(parameter_sets) > 1 and name in parameter_sets:
             filtered = [e for e in self._entries if e.metadata.parameter_set == name]
@@ -155,7 +166,7 @@ class SimResult(Generic[T]):
             buckets.setdefault(val, []).append(entry)
         return {k: SimResult(v) for k, v in buckets.items()}
 
-    def filter(self, key_or_fn, value=None) -> "SimResult[T]":
+    def filter(self, key_or_fn, value=None) -> SimResult[T]:
         if callable(key_or_fn):
             filtered = [e for e in self._entries if key_or_fn(e.metadata.pars, e.metadata)]
         else:

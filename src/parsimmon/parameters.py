@@ -234,16 +234,20 @@ class ParameterSet:
     def groups(self):
         return list(self._groups.keys())
 
+    def _merged(self, name: str) -> sc.objdict:
+        # _deep_update never mutates its second arg, so only base needs copying
+        return _deep_update(sc.dcp(self._base), self._groups[name])
+
     def __iter__(self):
         sim_id = 1
-        for name, overrides in self._groups.items():
-            merged = _deep_update(sc.dcp(self._base), sc.dcp(overrides))
+        for name in self._groups:
+            merged = self._merged(name)
             for group_id, (_, updates) in enumerate(self._expand(merged), start=1):
                 yield sc.objdict(group=name, sim_id=sim_id, group_id=group_id, pars=updates)
                 sim_id += 1
 
     def __len__(self):
-        return sum(self._count(_deep_update(sc.dcp(self._base), sc.dcp(ovr))) for ovr in self._groups.values())
+        return sum(self._count(self._merged(name)) for name in self._groups)
 
     @staticmethod
     def _expand(merged):
@@ -342,8 +346,8 @@ class ParameterSet:
         return math.prod(sizes) if sizes else 1
 
     def print_summary(self):
-        for name, overrides in self._groups.items():
-            merged = _deep_update(sc.dcp(self._base), sc.dcp(overrides))
+        for name in self._groups:
+            merged = self._merged(name)
             resolved = _resolve_markers(merged)
             print(f"\n--- {name} ---")
             sc.pp(resolved)
@@ -554,7 +558,14 @@ class ParameterSetManager:
 
         for i, meta in enumerate(sim_points):
             fn_metadata = {"parameter_set": name, "group": meta.group, "sim_id": meta.sim_id, "group_id": meta.group_id}
-            entry_metadata = {"pars": sc.dcp(meta.pars), "fn_hash": fn_hash} | fn_metadata
+            entry_metadata = {
+                "pars": sc.dcp(meta.pars),
+                "fn_hash": fn_hash,
+                "parameter_set": name,
+                "group": meta.group,
+                "sim_id": meta.sim_id,
+                "group_id": meta.group_id,
+            }
             cache_key = None
 
             if self._cache is not None:

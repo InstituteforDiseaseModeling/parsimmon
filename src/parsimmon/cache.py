@@ -272,7 +272,7 @@ class SimFileCache(SimCacheBase):
             self._save, self._load = _make_default_serializers()
         else:
             raise ValueError("save and load must both be provided or both omitted")
-        self._index_cache: "list[dict] | None" = None
+        self._index_cache: list[dict] | None = None
 
     def _ensure_dirs(self):
         self._dir.mkdir(parents=True, exist_ok=True)
@@ -291,7 +291,6 @@ class SimFileCache(SimCacheBase):
         return self._index_cache
 
     def _write_index(self, entries: list[dict]) -> None:
-        self._ensure_dirs()
         tmp = self._index_path.with_suffix(".cache.tmp")
         self._save(str(tmp), entries)
         os.replace(str(tmp), str(self._index_path))
@@ -355,7 +354,8 @@ class SimFileCache(SimCacheBase):
         self._index_cache = None
 
     def get_fn_hash(self, cache_key: str) -> "str | None":
-        for entry in self._read_index():
+        # scan in reverse to return the most recent entry for this key
+        for entry in reversed(self._read_index()):
             if entry.get("cache_key") == cache_key:
                 return entry.get("fn_hash")
         return None

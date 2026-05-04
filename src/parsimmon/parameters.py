@@ -27,6 +27,55 @@ import numpy as np
 import sciris as sc
 
 
+def _terminal_menu(prompt, options):
+    """Interactive menu with arrow-key navigation. Returns selected index."""
+    if not sys.stdin.isatty():
+        return 0
+
+    try:
+        import termios
+        import tty
+    except ImportError:
+        return 0
+
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    selected = 0
+    n = len(options)
+
+    def render():
+        for i, opt in enumerate(options):
+            if i == selected:
+                sys.stdout.write(f"\r  \033[1m> {opt}\033[0m\033[K\n")
+            else:
+                sys.stdout.write(f"\r    {opt}\033[K\n")
+        sys.stdout.flush()
+
+    print(prompt)
+    render()
+
+    try:
+        tty.setcbreak(fd)
+        while True:
+            ch = sys.stdin.read(1)
+            if ch in ("\r", "\n"):
+                break
+            if ch == "\x03":
+                raise KeyboardInterrupt
+            if ch == "\x1b":
+                seq = sys.stdin.read(2)
+                if seq == "[A":
+                    selected = (selected - 1) % n
+                elif seq == "[B":
+                    selected = (selected + 1) % n
+            sys.stdout.write(f"\033[{n}A")
+            render()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    return selected
+
+
 def _to_nested_objdict(d):
     out = sc.objdict()
     for k, v in d.items():
@@ -130,7 +179,6 @@ def _fmt_params(d, root=None, range_paths=None, prefix=(), indent=2):
             lines.append(f"{pad}}}")
             continue
 
-        # resolve markers to display values
         if isinstance(val, _ParamRange):
             display = val.values
         elif isinstance(val, _ParamLink):
@@ -633,10 +681,26 @@ class ParameterSetManager:
         sim_points = list(ps)
 
         fn_hash = None
+        skip_run = False
         if self._cache is not None:
             from .cache import compute_cache_key, hash_function_chain
 
             fn_hash = hash_function_chain(fn)
+
+            for meta in sim_points:
+                ck = compute_cache_key(meta.pars)
+                if self._cache.exists(ck):
+                    sh = self._cache.get_fn_hash(ck)
+                    if sh is not None and sh != fn_hash:
+                        choice = _terminal_menu(
+                            "Cache is invalid (simulation script updated):",
+                            ["Rerun simulations", "Skip to analysis", "Stop"],
+                        )
+                        if choice == 2:
+                            return None
+                        if choice == 1:
+                            skip_run = True
+                        break
 
         entries = []
         to_run = []
@@ -657,12 +721,13 @@ class ParameterSetManager:
                 cache_key = compute_cache_key(meta.pars)
                 if self._cache.exists(cache_key):
                     stored_fn_hash = self._cache.get_fn_hash(cache_key)
-                    if stored_fn_hash is not None and fn_hash != stored_fn_hash:
-                        # sim function changed — invalidate and rerun
+                    stale = stored_fn_hash is not None and fn_hash != stored_fn_hash
+                    if stale and not skip_run:
                         self._cache.delete(cache_key)
                     else:
                         entry_metadata["cache_key"] = cache_key
-                        self._cache.add_index_entry(entry_metadata)
+                        if not stale:
+                            self._cache.add_index_entry(entry_metadata)
                         entries.append(
                             _SimEntry(
                                 metadata=entry_metadata,
@@ -672,15 +737,21 @@ class ParameterSetManager:
                         )
                         continue
 
+            if skip_run:
+                continue
+
             to_run.append((i, meta.pars, fn_metadata, entry_metadata, cache_key))
             entries.append(None)
 
         if to_run:
             n_cached = len(sim_points) - len(to_run)
+            parts = []
             if n_cached > 0:
-                print(f"Running {len(to_run)} simulations ({n_cached} cached)...")
-            else:
-                print(f"Running {len(to_run)} simulations...")
+                parts.append(f"{n_cached} cached")
+            if jobs is not None:
+                parts.append(f"{jobs} jobs")
+            suffix = f" ({', '.join(parts)})" if parts else ""
+            print(f"Running {len(to_run)} simulations{suffix}...")
 
             if jobs is not None and len(to_run) > 1:
                 with concurrent.futures.ProcessPoolExecutor(max_workers=jobs) as executor:
@@ -705,6 +776,8 @@ class ParameterSetManager:
                     )
                 else:
                     entries[entry_idx] = _SimEntry(metadata=entry_meta, value=result)
+        elif skip_run:
+            print(f"Loaded {len(entries)} simulations from cache (skipping rerun).")
         else:
             print(f"All {len(sim_points)} simulations loaded from cache.")
 

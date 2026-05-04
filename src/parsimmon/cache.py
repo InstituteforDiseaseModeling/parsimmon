@@ -2,32 +2,36 @@
 
 import ast
 import hashlib
-import importlib
 import importlib.util
 import inspect
 import os
 import warnings
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
+
 def _pickle_save(path, obj):
     import pickle
-    with open(path, 'wb') as f:
+
+    with open(path, "wb") as f:
         pickle.dump(obj, f)
 
 
 def _pickle_load(path):
     import pickle
-    with open(path, 'rb') as f:
+
+    with open(path, "rb") as f:
         return pickle.load(f)
 
 
 def _make_default_serializers():
     try:
         import sciris as sc
+
         return (
             lambda path, obj: sc.save(str(path), obj, verbose=False),
             lambda path: sc.load(str(path)),
@@ -47,33 +51,33 @@ def _canonical_repr(obj, _seen=None):
     is_container = isinstance(obj, (dict, list, tuple))
     if is_container:
         if obj_id in _seen:
-            return b'<circular>'
+            return b"<circular>"
         _seen.add(obj_id)
 
     try:
         if isinstance(obj, dict):
             items = sorted(obj.items(), key=lambda kv: repr(kv[0]))
-            parts = [b'dict:{']
+            parts = [b"dict:{"]
             for k, v in items:
                 parts.append(_canonical_repr(k, _seen))
-                parts.append(b':')
+                parts.append(b":")
                 parts.append(_canonical_repr(v, _seen))
-                parts.append(b',')
-            parts.append(b'}')
-            return b''.join(parts)
+                parts.append(b",")
+            parts.append(b"}")
+            return b"".join(parts)
 
         if isinstance(obj, (list, tuple)):
-            tag = b'list:[' if isinstance(obj, list) else b'tuple:('
-            close = b']' if isinstance(obj, list) else b')'
+            tag = b"list:[" if isinstance(obj, list) else b"tuple:("
+            close = b"]" if isinstance(obj, list) else b")"
             parts = [tag]
             for item in obj:
                 parts.append(_canonical_repr(item, _seen))
-                parts.append(b',')
+                parts.append(b",")
             parts.append(close)
-            return b''.join(parts)
+            return b"".join(parts)
 
         if isinstance(obj, np.ndarray):
-            header = f'ndarray:{obj.dtype}:{obj.shape}:'.encode()
+            header = f"ndarray:{obj.dtype}:{obj.shape}:".encode()
             return header + obj.tobytes()
 
         # normalize numpy scalars so np.float64(1.0) hashes the same as float(1.0)
@@ -86,27 +90,27 @@ def _canonical_repr(obj, _seen=None):
 
         # bool before int because bool is a subclass of int
         if isinstance(obj, bool):
-            return f'bool:{obj!r}'.encode()
+            return f"bool:{obj!r}".encode()
         if isinstance(obj, int):
-            return f'int:{obj!r}'.encode()
+            return f"int:{obj!r}".encode()
         if isinstance(obj, float):
-            return f'float:{obj!r}'.encode()
+            return f"float:{obj!r}".encode()
         if isinstance(obj, str):
-            return f'str:{obj!r}'.encode()
+            return f"str:{obj!r}".encode()
         if obj is None:
-            return b'None'
+            return b"None"
         if isinstance(obj, bytes):
-            return b'bytes:' + obj
+            return b"bytes:" + obj
 
         r = repr(obj)
-        if '0x' in r:
+        if "0x" in r:
             warnings.warn(
                 f"repr of {type(obj).__name__} contains '0x', which suggests a memory "
                 f"address. The cache key for this object will not be stable across "
                 f"Python sessions: {r!r}",
                 stacklevel=3,
             )
-        return f'obj:{r}'.encode()
+        return f"obj:{r}".encode()
 
     finally:
         if is_container:
@@ -126,7 +130,7 @@ def compute_cache_key(pars: dict) -> str:
 
 def is_project_local(module_path: Path, project_root: Path) -> bool:
     path_str = str(module_path)
-    if '/site-packages/' in path_str or '\\site-packages\\' in path_str:
+    if "/site-packages/" in path_str or "\\site-packages\\" in path_str:
         return False
 
     try:
@@ -134,7 +138,7 @@ def is_project_local(module_path: Path, project_root: Path) -> bool:
     except ValueError:
         return False
 
-    venv_markers = {'.venv', 'venv', 'env', '.env', '.tox', '.nox'}
+    venv_markers = {".venv", "venv", "env", ".env", ".tox", ".nox"}
     if rel.parts and rel.parts[0] in venv_markers:
         return False
 
@@ -146,7 +150,7 @@ def find_project_root(start: Path) -> Path:
     # falls back to parent of start for notebooks / test scripts
     current = start.resolve()
     for parent in [current, *current.parents]:
-        if (parent / '.git').exists():
+        if (parent / ".git").exists():
             return parent
     return start.resolve().parent
 
@@ -158,7 +162,7 @@ def hash_function_chain(fn: Callable) -> str:
     cache, but logic changes do.
     """
     module = inspect.getmodule(fn)
-    module_file = getattr(module, '__file__', None) if module else None
+    module_file = getattr(module, "__file__", None) if module else None
     if module_file is None:
         src = inspect.getsource(fn)
         return hashlib.sha256(src.encode()).hexdigest()[:16]
@@ -167,12 +171,11 @@ def hash_function_chain(fn: Callable) -> str:
     visited: dict[str, str] = {}  # module_path -> ast_dump
     _collect_module_asts(Path(module_file), project_root, visited, seen=set())
 
-    combined = '\n'.join(visited[k] for k in sorted(visited)).encode()
+    combined = "\n".join(visited[k] for k in sorted(visited)).encode()
     return hashlib.sha256(combined).hexdigest()[:16]
 
 
-def _collect_module_asts(module_path: Path, project_root: Path,
-                         visited: dict, seen: set) -> None:
+def _collect_module_asts(module_path: Path, project_root: Path, visited: dict, seen: set) -> None:
     abs_path = str(module_path.resolve())
     if abs_path in seen:
         return
@@ -182,7 +185,7 @@ def _collect_module_asts(module_path: Path, project_root: Path,
         return
 
     try:
-        source = module_path.read_text(encoding='utf-8')
+        source = module_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return
 
@@ -199,8 +202,7 @@ def _collect_module_asts(module_path: Path, project_root: Path,
             _collect_module_asts(dep_path, project_root, visited, seen)
 
 
-def _resolve_import_node(node: ast.AST, current_file: Path,
-                          project_root: Path) -> 'Path | None':
+def _resolve_import_node(node: ast.AST, current_file: Path, project_root: Path) -> "Path | None":
     if isinstance(node, ast.Import):
         names = [alias.name for alias in node.names]
     elif isinstance(node, ast.ImportFrom):
@@ -220,14 +222,13 @@ def _resolve_import_node(node: ast.AST, current_file: Path,
             continue
 
         candidate = Path(spec.origin)
-        if candidate.suffix == '.py' and is_project_local(candidate, project_root):
+        if candidate.suffix == ".py" and is_project_local(candidate, project_root):
             return candidate
 
     return None
 
 
 class SimCacheBase:
-
     def save(self, cache_key: str, result: Any, metadata: dict) -> None:
         raise NotImplementedError
 
@@ -262,22 +263,22 @@ class SimFileCache(SimCacheBase):
 
     def __init__(self, directory, save=None, load=None):
         self._dir = Path(directory)
-        self._results_dir = self._dir / 'results'
-        self._index_path = self._dir / 'index.cache'
+        self._results_dir = self._dir / "results"
+        self._index_path = self._dir / "index.cache"
         if save is not None and load is not None:
             self._save, self._load = save, load
         elif save is None and load is None:
             self._save, self._load = _make_default_serializers()
         else:
             raise ValueError("save and load must both be provided or both omitted")
-        self._index_cache: 'list[dict] | None' = None
+        self._index_cache: "list[dict] | None" = None
 
     def _ensure_dirs(self):
         self._dir.mkdir(parents=True, exist_ok=True)
         self._results_dir.mkdir(exist_ok=True)
 
     def _result_path(self, cache_key: str) -> Path:
-        return self._results_dir / f'{cache_key}.pkl'
+        return self._results_dir / f"{cache_key}.pkl"
 
     def _read_index(self) -> list[dict]:
         if self._index_cache is not None:
@@ -290,7 +291,7 @@ class SimFileCache(SimCacheBase):
 
     def _write_index(self, entries: list[dict]) -> None:
         self._ensure_dirs()
-        tmp = self._index_path.with_suffix('.cache.tmp')
+        tmp = self._index_path.with_suffix(".cache.tmp")
         self._save(str(tmp), entries)
         os.replace(str(tmp), str(self._index_path))
         self._index_cache = entries
@@ -304,12 +305,12 @@ class SimFileCache(SimCacheBase):
         path = self._result_path(cache_key)
         if not path.exists():
             self._save(str(path), result)
-        self.add_index_entry({**metadata, 'cache_key': cache_key})
+        self.add_index_entry({**metadata, "cache_key": cache_key})
 
     def load(self, cache_key: str) -> Any:
         path = self._result_path(cache_key)
         if not path.exists():
-            raise KeyError(f'no cached result for key {cache_key!r}')
+            raise KeyError(f"no cached result for key {cache_key!r}")
         return self._load(str(path))
 
     def add_index_entry(self, metadata: dict) -> None:
@@ -318,7 +319,7 @@ class SimFileCache(SimCacheBase):
         # the file
         entries = self._read_index()
         entry = {
-            'timestamp': datetime.now(tz=timezone.utc).isoformat(),
+            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             **metadata,
         }
         entries.append(entry)
@@ -332,7 +333,7 @@ class SimFileCache(SimCacheBase):
         # state even if the index is stale
         if not self._results_dir.exists():
             return []
-        return [p.stem for p in self._results_dir.glob('*.pkl')]
+        return [p.stem for p in self._results_dir.glob("*.pkl")]
 
     def delete(self, cache_key: str) -> None:
         path = self._result_path(cache_key)
@@ -340,20 +341,20 @@ class SimFileCache(SimCacheBase):
             path.unlink()
 
         entries = self._read_index()
-        filtered = [e for e in entries if e.get('cache_key') != cache_key]
+        filtered = [e for e in entries if e.get("cache_key") != cache_key]
         if len(filtered) != len(entries):
             self._write_index(filtered)
 
     def clear(self) -> None:
         if self._results_dir.exists():
-            for p in self._results_dir.glob('*.pkl'):
+            for p in self._results_dir.glob("*.pkl"):
                 p.unlink()
         if self._index_path.exists():
             self._index_path.unlink()
         self._index_cache = None
 
-    def get_fn_hash(self, cache_key: str) -> 'str | None':
+    def get_fn_hash(self, cache_key: str) -> "str | None":
         for entry in self._read_index():
-            if entry.get('cache_key') == cache_key:
-                return entry.get('fn_hash')
+            if entry.get("cache_key") == cache_key:
+                return entry.get("fn_hash")
         return None

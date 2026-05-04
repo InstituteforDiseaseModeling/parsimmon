@@ -1,13 +1,8 @@
-from pathlib import Path
-
 import numpy as np
 import pytest
 import sciris as sc
 
 from parsimmon.parameters import ParameterSet, ParameterSetManager, _ParamLink
-
-do_plot = False
-sc.options(interactive=False)
 
 
 @sc.timer()
@@ -92,9 +87,9 @@ def test_pset_update_group():
     assert len(results) == 1, f"Expected 1 dict, got {len(results)}"
 
     d = results[0].pars
-    assert d["a"] == 1,  f"a should be preserved, got {d.get('a')}"
+    assert d["a"] == 1, f"a should be preserved, got {d.get('a')}"
     assert d["b"] == 99, f"b should be overwritten to 99, got {d.get('b')}"
-    assert d["c"] == 3,  f"c should be added, got {d.get('c')}"
+    assert d["c"] == 3, f"c should be added, got {d.get('c')}"
 
 
 @sc.timer()
@@ -137,7 +132,6 @@ def test_pset_clear():
     assert d2["a"]["y"] == 2, "a.y should remain in base"
 
 
-
 @sc.timer()
 def test_pset_len():
     ps = ParameterSet({
@@ -161,13 +155,13 @@ def test_pset_attr_access():
     assert ps.a.y == 2, f"Expected ps.a.y=2, got {ps.a.y}"
 
     assert ps.G.a.x == 10, f"Expected ps.G.a.x=10, got {ps.G.a.x}"
-    assert ps.G.b.z == 3,  f"Expected ps.G.b.z=3, got {ps.G.b.z}"
+    assert ps.G.b.z == 3, f"Expected ps.G.b.z=3, got {ps.G.b.z}"
 
     r = ParameterSet.arange(3)
     ps2 = ParameterSet()
     ps2.add("G", {"a": {"b": r}})
     assert list(ps2.G.a.b) == [0, 1, 2], "Range values should match after copy"
-    assert hasattr(ps2.G.a.b, 'link'), "Copied range should still have .link() method"
+    assert hasattr(ps2.G.a.b, "link"), "Copied range should still have .link() method"
 
 
 @sc.timer()
@@ -258,11 +252,14 @@ def test_range_identity_link():
 def test_link_chain():
     ps = ParameterSet()
     r = ParameterSet.arange(3)
-    ps.add("G", {
-        "a": r,
-        "b": ps.link("a", lambda x: x * 2),
-        "c": ps.link("b", lambda x: x + 100),
-    })
+    ps.add(
+        "G",
+        {
+            "a": r,
+            "b": ps.link("a", lambda x: x * 2),
+            "c": ps.link("b", lambda x: x + 100),
+        },
+    )
 
     results = list(ps)
     assert len(results) == 3, f"Expected 3 expansions, got {len(results)}"
@@ -271,18 +268,20 @@ def test_link_chain():
         a = d.pars["a"]
         b = d.pars["b"]
         c = d.pars["c"]
-        assert b == a * 2,     f"b should be a*2; got a={a}, b={b}"
-        assert c == b + 100,   f"c should be b+100; got b={b}, c={c}"
+        assert b == a * 2, f"b should be a*2; got a={a}, b={b}"
+        assert c == b + 100, f"c should be b+100; got b={b}, c={c}"
 
 
 @sc.timer()
 def test_full_path_link():
     ps = ParameterSet()
     r = ParameterSet.iter([0.1, 0.5, 0.9])
-    ps.add("G", {
-        "strains": {"rd": {"init": r},
-                    "ss": {"init": ps.link("strains.rd.init", lambda x: round(1 - x, 2))}},
-    })
+    ps.add(
+        "G",
+        {
+            "strains": {"rd": {"init": r}, "ss": {"init": ps.link("strains.rd.init", lambda x: round(1 - x, 2))}},
+        },
+    )
 
     results = list(ps)
     assert len(results) == 3, f"Expected 3 expansions, got {len(results)}"
@@ -313,7 +312,7 @@ def test_manager_add_bare():
 def test_manager_add_named():
     pm = ParameterSetManager()
 
-    @pm.add('Custom')
+    @pm.add("Custom")
     def my_fn(ps):
         ps.add("Custom", {"a": 1})
         return ps
@@ -345,8 +344,8 @@ def test_manager_extend():
     results = list(ps)
     assert len(results) == 2, f"Expected 2 dicts, got {len(results)}"
 
-    p_result = [r for r in results if r.group == "P"][0].pars
-    c_result = [r for r in results if r.group == "C"][0].pars
+    p_result = next(r for r in results if r.group == "P").pars
+    c_result = next(r for r in results if r.group == "C").pars
     assert p_result["a"] == 1 and p_result["b"] == 2, f"P should be unchanged: {p_result}"
     assert c_result["b"] == 99 and c_result["c"] == 3, f"C should have overrides: {c_result}"
 
@@ -360,7 +359,7 @@ def test_manager_extend_defaults():
         return {"a": {"x": 1, "y": 2}}
 
     @pm.add(extends=base)
-    def child(ps):
+    def child(ps):  # ruff: ignore[reportUnusedFunction]
         ps.add({"a": {"x": 99}})
         ps.add("G", {})
         return ps
@@ -371,7 +370,7 @@ def test_manager_extend_defaults():
 
     d = results[0].pars
     assert d["a"]["x"] == 99, f"Default x should be updated to 99, got {d['a']['x']}"
-    assert d["a"]["y"] == 2,  f"Default y should be inherited as 2, got {d['a']['y']}"
+    assert d["a"]["y"] == 2, f"Default y should be inherited as 2, got {d['a']['y']}"
 
 
 @sc.timer()
@@ -439,8 +438,8 @@ def test_manager_extend_chain():
     results = list(ps)
     assert len(results) == 2, f"Expected 2 dicts, got {len(results)}"
 
-    g1 = [r for r in results if r.group == "G1"][0].pars
-    g2 = [r for r in results if r.group == "G2"][0].pars
+    g1 = next(r for r in results if r.group == "G1").pars
+    g2 = next(r for r in results if r.group == "G2").pars
     assert g1["a"]["b"] == 2, f"G1 override should be 2, got {g1['a']['b']}"
     assert g2["a"]["b"] == 3, f"G2 override should be 3, got {g2['a']['b']}"
 
@@ -452,15 +451,12 @@ def test_manager_return_none_raises():
     @pm.add
     def bad(ps):
         ps.add("G", {"a": 1})
-        return
 
     with pytest.raises(TypeError, match="Mapping or ParameterSet"):
         pm._build("bad")
 
 
 if __name__ == "__main__":
-    do_plot = True
-    sc.options(interactive=do_plot)
     T = sc.timer()
 
     test_param_range_arange()

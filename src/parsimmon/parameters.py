@@ -57,7 +57,7 @@ def _set_nested(d, path, val):
 
 
 def _get_nested(d, dotted_key):
-    for part in dotted_key.split('.'):
+    for part in dotted_key.split("."):
         if not isinstance(d, dict):
             raise KeyError(f"Cannot navigate into non-dict at '{part}' in '{dotted_key}'")
         if part not in d:
@@ -75,8 +75,8 @@ def _resolve_source_for_display(sk, root, range_paths, link_path):
     if isinstance(sk, _ParamLink):
         inner = _resolve_link_for_display(sk, root, range_paths, link_path)
         return inner if isinstance(inner, list) else [inner]
-    if '.' not in sk:
-        parent = '.'.join(link_path[:-1])
+    if "." not in sk:
+        parent = ".".join(link_path[:-1])
         dotted = f"{parent}.{sk}" if parent else sk
     else:
         dotted = sk
@@ -149,7 +149,7 @@ class ParameterSet:
     """
 
     def __init__(self, base=None):
-        self._base   = sc.objdict()
+        self._base = sc.objdict()
         self._groups = sc.objdict()
         if base is not None:
             _deep_update(self._base, _to_nested_objdict(sc.dcp(base)))
@@ -157,15 +157,12 @@ class ParameterSet:
     def __getattr__(self, name):
         # prevents infinite recursion during deepcopy when _groups/_base
         # aren't in __dict__ yet
-        if name.startswith('_'):
+        if name.startswith("_"):
             raise AttributeError(name)
         in_groups = name in self._groups
-        in_base   = name in self._base
+        in_base = name in self._base
         if in_groups and in_base:
-            raise AttributeError(
-                f"'{name}' exists as both group and default key; "
-                f"use ps._groups['{name}'] or ps._base['{name}']"
-            )
+            raise AttributeError(f"'{name}' exists as both group and default key. Deduplicate")
         if in_groups:
             return self._groups[name]
         if in_base:
@@ -196,7 +193,7 @@ class ParameterSet:
     def add(self, name_or_overrides, overrides=None):
         if isinstance(name_or_overrides, str):
             name = name_or_overrides
-            if hasattr(ParameterSet, name) or name.startswith('_'):
+            if hasattr(ParameterSet, name) or name.startswith("_"):
                 raise ValueError(f"Group name '{name}' collides with a ParameterSet attribute")
             if name in self._base:
                 raise ValueError(f"Group name '{name}' collides with default key '{name}'")
@@ -215,15 +212,15 @@ class ParameterSet:
 
     def clear(self, name_or_keys, keys=None):
         if isinstance(name_or_keys, str):
-            target   = self._groups.get(name_or_keys, sc.objdict())
+            target = self._groups.get(name_or_keys, sc.objdict())
             key_list = keys or []
         elif isinstance(name_or_keys, (list, tuple)):
-            target   = self._base
+            target = self._base
             key_list = name_or_keys
         else:
             raise TypeError(f"Expected str or list, got {type(name_or_keys).__name__}")
         for dotted in key_list:
-            path = tuple(dotted.split('.'))
+            path = tuple(dotted.split("."))
             node = target
             for key in path[:-1]:
                 if not isinstance(node, dict) or key not in node:
@@ -242,21 +239,18 @@ class ParameterSet:
         for name in self._groups:
             overrides = self._groups[name]
             merged = _deep_update(sc.dcp(self._base), sc.dcp(overrides))
-            for group_id, (point, updates) in enumerate(self._expand(merged), start=1):
+            for group_id, (_, updates) in enumerate(self._expand(merged), start=1):
                 yield sc.objdict(group=name, sim_id=sim_id, group_id=group_id, pars=updates)
                 sim_id += 1
 
     def __len__(self):
-        return sum(
-            self._count(_deep_update(sc.dcp(self._base), sc.dcp(ovr)))
-            for ovr in self._groups.values()
-        )
+        return sum(self._count(_deep_update(sc.dcp(self._base), sc.dcp(ovr))) for ovr in self._groups.values())
 
     @staticmethod
     def _expand(merged):
-        fixed       = {}
-        ranges      = []
-        links       = []
+        fixed = {}
+        ranges = []
+        links = []
         range_paths = {}
 
         for path, val in _iter_leaves(merged):
@@ -278,14 +272,14 @@ class ParameterSet:
                             "Linked _ParamRange not found in this group — "
                             "after ps.add('G', ps.Other), link via ps.G.x.y, not ps.Other.x.y"
                         )
-                    dotted = '.'.join(rpath)
+                    dotted = ".".join(rpath)
                     source_vals.append(_get_nested(updates, dotted))
 
                 elif isinstance(sk, _ParamLink):
                     for lp, lk in links:
                         if lk is sk:
                             try:
-                                source_vals.append(_get_nested(updates, '.'.join(lp)))
+                                source_vals.append(_get_nested(updates, ".".join(lp)))
                             except KeyError:
                                 return _UNRESOLVED
                             break
@@ -293,8 +287,8 @@ class ParameterSet:
                         raise ValueError("Inner _ParamLink not found in link list")
 
                 elif isinstance(sk, str):
-                    if '.' not in sk:
-                        parent = '.'.join(link_path[:-1])
+                    if "." not in sk:
+                        parent = ".".join(link_path[:-1])
                         dotted = f"{parent}.{sk}" if parent else sk
                     else:
                         dotted = sk
@@ -320,7 +314,7 @@ class ParameterSet:
                 if not still_unresolved:
                     return
                 if len(still_unresolved) == len(unresolved):
-                    paths = ['.'.join(p) for p, _ in still_unresolved]
+                    paths = [".".join(p) for p, _ in still_unresolved]
                     raise ValueError(f"Circular link dependency among: {paths}")
                 unresolved = still_unresolved
 
@@ -348,7 +342,6 @@ class ParameterSet:
         sizes = [len(val) for _, val in _iter_leaves(merged) if isinstance(val, _ParamRange)]
         return math.prod(sizes) if sizes else 1
 
-
     def print_summary(self):
         for name in self._groups:
             overrides = self._groups[name]
@@ -373,17 +366,18 @@ class ParameterSetManager:
     """
 
     def __init__(self, path=None, cache=None, data_dir=None, plots_dir=None):
-        self._entries      = sc.objdict()
-        self._analyses     = {}
-        self._extra_args   = []
+        self._entries = sc.objdict()
+        self._analyses = {}
+        self._extra_args = []
         self._default_name = None
-        self._path         = path
-        self._data_dir_override  = Path(data_dir) if data_dir is not None else None
+        self._path = path
+        self._data_dir_override = Path(data_dir) if data_dir is not None else None
         self._plots_dir_override = Path(plots_dir) if plots_dir is not None else None
 
         if cache is True:
             from .cache import SimFileCache
-            self._cache = SimFileCache(self.data_dir / 'cache')
+
+            self._cache = SimFileCache(self.data_dir / "cache")
         elif cache:
             self._cache = cache
         else:
@@ -393,19 +387,18 @@ class ParameterSetManager:
     def data_dir(self):
         if self._data_dir_override is not None:
             return self._data_dir_override
-        base = Path('data')
+        base = Path("data")
         return base / self._path if self._path else base
 
     @property
     def plots_dir(self):
         if self._plots_dir_override is not None:
             return self._plots_dir_override
-        base = Path('plots')
+        base = Path("plots")
         return base / self._path if self._path else base
 
     def add_argument(self, *args, **kwargs):
         self._extra_args.append((args, kwargs))
-        return
 
     @property
     def _default(self):
@@ -424,6 +417,7 @@ class ParameterSetManager:
 
         def decorator(fn):
             return self._register(fn, name or fn.__name__, parent_name, default)
+
         return decorator
 
     def _register(self, fn, name, parent_name=None, default=False):
@@ -434,7 +428,7 @@ class ParameterSetManager:
         return fn
 
     def _fn_to_name(self, fn):
-        name = getattr(fn, '_pm_name', None)
+        name = getattr(fn, "_pm_name", None)
         if name is not None and name in self._entries:
             return name
         raise KeyError(f"Function {fn.__name__!r} is not registered")
@@ -443,6 +437,7 @@ class ParameterSetManager:
         def decorator(fn):
             self._analyses[name] = fn
             return fn
+
         return decorator
 
     def _build(self, name, cli_overrides=None):
@@ -471,10 +466,10 @@ class ParameterSetManager:
     @staticmethod
     def _apply_cli_overrides(ps, overrides):
         for raw in overrides:
-            if '=' not in raw:
+            if "=" not in raw:
                 raise ValueError(f"Invalid override {raw!r}; expected key=value")
-            key, val_str = raw.split('=', 1)
-            path = tuple(key.split('.'))
+            key, val_str = raw.split("=", 1)
+            path = tuple(key.split("."))
             try:
                 existing = _get_nested(ps._base, key)
                 val = _coerce(val_str, type(existing))
@@ -486,22 +481,32 @@ class ParameterSetManager:
     def run(self, fn=None, jobs=None, argv=None):
         parser = argparse.ArgumentParser()
         default = self._default
-        p_kwargs = dict(choices=list(self._entries.keys()), help='Parameter set to run')
+        p_kwargs = {"choices": list(self._entries.keys()), "help": "Parameter set to run"}
         if default is not None:
-            p_kwargs['default'] = default
+            p_kwargs["default"] = default
         else:
-            p_kwargs['required'] = True
-        parser.add_argument('-p', '--parameter-set', **p_kwargs)
-        parser.add_argument('-a', '--args', action='append', default=[],
-                            help='Override key=value (repeatable)')
-        parser.add_argument('--print',   action='store_true', dest='print_pars',
-                            help='Print parameter dicts and exit')
-        parser.add_argument('--count',   action='store_true',
-                            help='Print sim count and exit')
-        parser.add_argument('--list',    action='store_true',
-                            help='List registered parameter sets and exit')
-        parser.add_argument('--no-plot', action='store_true',
-                            help='Skip post-run analysis/plotting')
+            p_kwargs["required"] = True
+        parser.add_argument("-p", "--parameter-set", **p_kwargs)
+        parser.add_argument(
+            "-a",
+            "--args",
+            action="append",
+            default=[],
+            help="Override key=value (repeatable)",
+        )
+        parser.add_argument(
+            "--print",
+            action="store_true",
+            dest="print_pars",
+            help="Print parameter dicts and exit",
+        )
+        parser.add_argument("--count", action="store_true", help="Print sim count and exit")
+        parser.add_argument(
+            "--list",
+            action="store_true",
+            help="List registered parameter sets and exit",
+        )
+        parser.add_argument("--no-plot", action="store_true", help="Skip post-run analysis/plotting")
 
         for extra_args, extra_kwargs in self._extra_args:
             parser.add_argument(*extra_args, **extra_kwargs)
@@ -512,12 +517,12 @@ class ParameterSetManager:
         if args.list:
             for entry_name in self._entries:
                 count = len(self._build(entry_name))
-                star  = '*' if entry_name == default else ' '
-                print(f'{star}{entry_name} {count}')
+                star = "*" if entry_name == default else " "
+                print(f"{star}{entry_name} {count}")
             return None
 
         name = args.parameter_set
-        ps   = self._build(name, cli_overrides=args.args or None)
+        ps = self._build(name, cli_overrides=args.args or None)
 
         if args.count:
             print(len(ps))
@@ -543,19 +548,15 @@ class ParameterSetManager:
         fn_hash = None
         if self._cache is not None:
             from .cache import compute_cache_key, hash_function_chain
+
             fn_hash = hash_function_chain(fn)
 
         entries = []
         to_run = []
 
         for i, meta in enumerate(sim_points):
-            fn_metadata = dict(
-                parameter_set=name, group=meta.group,
-                sim_id=meta.sim_id, group_id=meta.group_id,
-            )
-            entry_metadata = dict(
-                **fn_metadata, pars=sc.dcp(meta.pars), fn_hash=fn_hash,
-            )
+            fn_metadata = {"parameter_set": name, "group": meta.group, "sim_id": meta.sim_id, "group_id": meta.group_id}
+            entry_metadata = {"pars": sc.dcp(meta.pars), "fn_hash": fn_hash} | fn_metadata
 
             if self._cache is not None:
                 cache_key = compute_cache_key(meta.pars)
@@ -567,12 +568,15 @@ class ParameterSetManager:
                             f"for key {cache_key} was cached. Using cached result.",
                             stacklevel=3,
                         )
-                    entry_metadata['cache_key'] = cache_key
+                    entry_metadata["cache_key"] = cache_key
                     self._cache.add_index_entry(entry_metadata)
-                    entries.append(_SimEntry(
-                        metadata=entry_metadata,
-                        cache_key=cache_key, backend=self._cache,
-                    ))
+                    entries.append(
+                        _SimEntry(
+                            metadata=entry_metadata,
+                            cache_key=cache_key,
+                            backend=self._cache,
+                        )
+                    )
                 else:
                     to_run.append((i, meta.pars, fn_metadata, entry_metadata, cache_key))
                     entries.append(None)
@@ -602,10 +606,11 @@ class ParameterSetManager:
             for (entry_idx, _, _, entry_meta, cache_key), result in zip(to_run, ordered_results):
                 if self._cache is not None and cache_key is not None:
                     self._cache.save(cache_key, result, entry_meta)
-                    entry_meta['cache_key'] = cache_key
+                    entry_meta["cache_key"] = cache_key
                     entries[entry_idx] = _SimEntry(
                         metadata=entry_meta,
-                        cache_key=cache_key, backend=self._cache,
+                        cache_key=cache_key,
+                        backend=self._cache,
                     )
                 else:
                     entries[entry_idx] = _SimEntry(metadata=entry_meta, value=result)
@@ -622,6 +627,7 @@ class ParameterSetManager:
 
     def results(self):
         from .results import SimResult
+
         if self._cache is None:
             raise RuntimeError("Caching is not enabled; pass cache=True to ParameterSetManager")
         return SimResult.from_cache(self._cache)
@@ -629,9 +635,9 @@ class ParameterSetManager:
 
 def _coerce(val_str, target_type):
     if target_type is bool:
-        if val_str.lower() in {'true', '1', 'yes'}:
+        if val_str.lower() in {"true", "1", "yes"}:
             return True
-        if val_str.lower() in {'false', '0', 'no'}:
+        if val_str.lower() in {"false", "0", "no"}:
             return False
         raise ValueError(f"Cannot coerce {val_str!r} to bool")
     return target_type(val_str)
@@ -643,6 +649,6 @@ def _auto_coerce(val_str):
             return converter(val_str)
         except (ValueError, TypeError):
             pass
-    if val_str.lower() in {'true', 'false'}:
-        return val_str.lower() == 'true'
+    if val_str.lower() in {"true", "false"}:
+        return val_str.lower() == "true"
     return val_str

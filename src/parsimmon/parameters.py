@@ -148,10 +148,9 @@ class ParameterSet:
     Attribute access navigates groups then defaults (``ps.G2.a.b``).
     """
 
-    def __init__(self, base=None, label='enumerate'):
+    def __init__(self, base=None):
         self._base   = sc.objdict()
         self._groups = sc.objdict()
-        self.label   = label
         if base is not None:
             _deep_update(self._base, _to_nested_objdict(sc.dcp(base)))
 
@@ -244,8 +243,6 @@ class ParameterSet:
             overrides = self._groups[name]
             merged = _deep_update(sc.dcp(self._base), sc.dcp(overrides))
             for group_id, (point, updates) in enumerate(self._expand(merged), start=1):
-                label = self._make_label(name, sim_id, group_id, point, updates)
-                _set_nested(updates, ("sim", "label"), label)
                 yield sc.objdict(group=name, sim_id=sim_id, group_id=group_id, pars=updates)
                 sim_id += 1
 
@@ -351,16 +348,6 @@ class ParameterSet:
         sizes = [len(val) for _, val in _iter_leaves(merged) if isinstance(val, _ParamRange)]
         return math.prod(sizes) if sizes else 1
 
-    def _make_label(self, group_name, i, group_i, point, updates):
-        if self.label is None:
-            return group_name
-        if self.label == 'enumerate':
-            return f"{group_name}{i}"
-        if self.label == 'zip':
-            return f"{group_name}{group_i}"
-        if callable(self.label):
-            return self.label(group_name, i, updates)
-        raise ValueError(f"Unknown label mode {self.label!r}; expected None, 'enumerate', 'zip', or a callable")
 
     def print_summary(self):
         for name in self._groups:
@@ -562,10 +549,9 @@ class ParameterSetManager:
         to_run = []
 
         for i, meta in enumerate(sim_points):
-            label = meta.pars.get('sim', {}).get('label')
             fn_metadata = dict(
                 parameter_set=name, group=meta.group,
-                sim_id=meta.sim_id, group_id=meta.group_id, label=label,
+                sim_id=meta.sim_id, group_id=meta.group_id,
             )
             entry_metadata = dict(
                 **fn_metadata, pars=sc.dcp(meta.pars), fn_hash=fn_hash,

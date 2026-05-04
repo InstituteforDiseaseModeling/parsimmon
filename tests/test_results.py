@@ -22,7 +22,6 @@ def _make_result(groups_spec):
                 group=group_name,
                 sim_id=sim_id,
                 group_id=group_id,
-                label=f'{group_name}{sim_id}',
                 pars=sc.objdict(pars),
             ))
             sim_id += 1
@@ -111,13 +110,13 @@ def test_attr_parameter_set_access():
     values = [{'v': i} for i in range(4)]
     metadata_list = [
         dict(parameter_set='set_A', group='Control', sim_id=1, group_id=1,
-             label='Control1', pars=sc.objdict({})),
+             pars=sc.objdict({})),
         dict(parameter_set='set_A', group='Control', sim_id=2, group_id=2,
-             label='Control2', pars=sc.objdict({})),
+             pars=sc.objdict({})),
         dict(parameter_set='set_B', group='Control', sim_id=3, group_id=1,
-             label='Control1', pars=sc.objdict({})),
+             pars=sc.objdict({})),
         dict(parameter_set='set_B', group='Control', sim_id=4, group_id=2,
-             label='Control2', pars=sc.objdict({})),
+             pars=sc.objdict({})),
     ]
     sr = SimResult.from_values(values, metadata_list)
 
@@ -137,13 +136,13 @@ def test_attr_chained():
     values = [{'v': i} for i in range(4)]
     metadata_list = [
         dict(parameter_set='tipping_point', group='Baseline', sim_id=1,
-             group_id=1, label='B1', pars=sc.objdict({})),
+             group_id=1, pars=sc.objdict({})),
         dict(parameter_set='tipping_point', group='Baseline', sim_id=2,
-             group_id=2, label='B2', pars=sc.objdict({})),
+             group_id=2, pars=sc.objdict({})),
         dict(parameter_set='control', group='Baseline', sim_id=3,
-             group_id=1, label='B1', pars=sc.objdict({})),
+             group_id=1, pars=sc.objdict({})),
         dict(parameter_set='control', group='Baseline', sim_id=4,
-             group_id=2, label='B2', pars=sc.objdict({})),
+             group_id=2, pars=sc.objdict({})),
     ]
     sr = SimResult.from_values(values, metadata_list)
 
@@ -205,13 +204,13 @@ def test_group_by_key():
 def test_group_nested_key():
     values = [{'v': i} for i in range(4)]
     metadata_list = [
-        dict(parameter_set='test_set', group='A', sim_id=1, group_id=1, label='A1',
+        dict(parameter_set='test_set', group='A', sim_id=1, group_id=1,
              pars={'model': {'rate': 0.1}}),
-        dict(parameter_set='test_set', group='A', sim_id=2, group_id=2, label='A2',
+        dict(parameter_set='test_set', group='A', sim_id=2, group_id=2,
              pars={'model': {'rate': 0.1}}),
-        dict(parameter_set='test_set', group='B', sim_id=3, group_id=1, label='B1',
+        dict(parameter_set='test_set', group='B', sim_id=3, group_id=1,
              pars={'model': {'rate': 0.9}}),
-        dict(parameter_set='test_set', group='B', sim_id=4, group_id=2, label='B2',
+        dict(parameter_set='test_set', group='B', sim_id=4, group_id=2,
              pars={'model': {'rate': 0.9}}),
     ]
     sr = SimResult.from_values(values, metadata_list)
@@ -242,13 +241,13 @@ def test_filter_by_key_value():
 def test_filter_by_dotted_key():
     values = [{'v': i} for i in range(4)]
     metadata_list = [
-        dict(parameter_set='test_set', group='A', sim_id=1, group_id=1, label='A1',
+        dict(parameter_set='test_set', group='A', sim_id=1, group_id=1,
              pars={'model': {'rate': 0.1}}),
-        dict(parameter_set='test_set', group='A', sim_id=2, group_id=2, label='A2',
+        dict(parameter_set='test_set', group='A', sim_id=2, group_id=2,
              pars={'model': {'rate': 0.5}}),
-        dict(parameter_set='test_set', group='B', sim_id=3, group_id=1, label='B1',
+        dict(parameter_set='test_set', group='B', sim_id=3, group_id=1,
              pars={'model': {'rate': 0.1}}),
-        dict(parameter_set='test_set', group='B', sim_id=4, group_id=2, label='B2',
+        dict(parameter_set='test_set', group='B', sim_id=4, group_id=2,
              pars={'model': {'rate': 0.5}}),
     ]
     sr = SimResult.from_values(values, metadata_list)

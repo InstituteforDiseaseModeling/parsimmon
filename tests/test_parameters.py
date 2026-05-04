@@ -137,54 +137,6 @@ def test_pset_clear():
     assert d2["a"]["y"] == 2, "a.y should remain in base"
 
 
-@sc.timer()
-def test_pset_labels_enumerate():
-    ps = ParameterSet({"a": ParameterSet.iter([10, 20])})
-    ps.add("A", {})
-    ps.add("B", {})
-
-    labels = [d.pars["sim"]["label"] for d in ps]
-    expected = ["A1", "A2", "B3", "B4"]
-    assert labels == expected, f"Expected {expected}, got {labels}"
-
-
-@sc.timer()
-def test_pset_labels_zip():
-    ps = ParameterSet({"a": ParameterSet.iter([10, 20])}, label='zip')
-    ps.add("A", {})
-    ps.add("B", {})
-
-    labels = [d.pars["sim"]["label"] for d in ps]
-    expected = ["A1", "A2", "B1", "B2"]
-    assert labels == expected, f"Expected {expected}, got {labels}"
-
-
-@sc.timer()
-def test_pset_labels_none():
-    ps = ParameterSet({"a": ParameterSet.iter([10, 20])}, label=None)
-    ps.add("A", {})
-    ps.add("B", {})
-
-    labels = [d.pars["sim"]["label"] for d in ps]
-    expected = ["A", "A", "B", "B"]
-    assert labels == expected, f"Expected {expected}, got {labels}"
-
-
-@sc.timer()
-def test_pset_label_fn():
-    calls = []
-
-    def labeler(label, id, pars):
-        calls.append((label, id))
-        return f"custom_{label}_{id}"
-
-    ps = ParameterSet({"a": ParameterSet.iter([10, 20])}, label=labeler)
-    ps.add("G", {})
-
-    labels = [d.pars["sim"]["label"] for d in ps]
-    assert labels == ["custom_G_1", "custom_G_2"], f"Got {labels}"
-    assert calls == [("G", 1), ("G", 2)], f"Callable args wrong: {calls}"
-
 
 @sc.timer()
 def test_pset_len():
@@ -371,9 +323,6 @@ def test_manager_add_named():
     assert len(results) == 1, f"Expected 1 dict, got {len(results)}"
     assert ps.groups == ["Custom"], f"Expected group 'Custom', got {ps.groups}"
 
-    label = results[0].pars["sim"]["label"]
-    assert label == "Custom1", f"Expected label 'Custom1', got {label}"
-
 
 @sc.timer()
 def test_manager_extend():
@@ -523,10 +472,7 @@ if __name__ == "__main__":
     test_pset_update_group()
     test_pset_update_defaults()
     test_pset_clear()
-    test_pset_labels_enumerate()
-    test_pset_labels_zip()
-    test_pset_labels_none()
-    test_pset_label_fn()
+
     test_pset_len()
     test_pset_attr_access()
     test_pset_attr_setattr()

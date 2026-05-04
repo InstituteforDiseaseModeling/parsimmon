@@ -107,6 +107,48 @@ def _resolve_markers(d, root=None, range_paths=None, prefix=()):
     return out
 
 
+def _fmt_scalar(v):
+    if isinstance(v, np.integer):
+        return str(int(v))
+    if isinstance(v, (np.floating, float)):
+        f = float(v)
+        return str(int(f)) if f == int(f) else str(f)
+    return repr(v)
+
+
+def _fmt_params(d, root=None, range_paths=None, prefix=(), indent=2):
+    if root is None:
+        root = d
+        range_paths = {id(val): path for path, val in _iter_leaves(d) if isinstance(val, _ParamRange)}
+    lines = []
+    pad = " " * indent
+    for key, val in d.items():
+        path = prefix + (key,)
+        if isinstance(val, dict):
+            lines.append(f"{pad}{key}: {{")
+            lines.extend(_fmt_params(val, root, range_paths, path, indent + 2))
+            lines.append(f"{pad}}}")
+            continue
+
+        # resolve markers to display values
+        if isinstance(val, _ParamRange):
+            display = val.values
+        elif isinstance(val, _ParamLink):
+            display = _resolve_link_for_display(val, root, range_paths, path)
+        else:
+            display = val
+
+        if isinstance(display, list):
+            elems = ", ".join(_fmt_scalar(v) for v in display)
+            swept = isinstance(val, (_ParamRange, _ParamLink))
+            formatted = f"[[ {elems} ]]" if swept else f"[{elems}]"
+        else:
+            formatted = _fmt_scalar(display)
+
+        lines.append(f"{pad}{key}: {formatted}")
+    return lines
+
+
 class _ParamRange:
     """Marker for Cartesian expansion; survives deep-merge as a non-dict leaf.
 
@@ -347,12 +389,18 @@ class ParameterSet:
         return math.prod(sizes) if sizes else 1
 
     def print_summary(self):
-        for name in self._groups:
+        groups = list(self._groups)
+        for i, name in enumerate(groups):
             merged = self._merged(name)
-            resolved = _resolve_markers(merged)
-            print(f"\n--- {name} ---")
-            sc.pp(resolved)
-        print(f"\nTotal: {len(self)} simulations across {len(self._groups)} groups")
+            lines = [f"{name}: {{"]
+            lines.extend(_fmt_params(merged))
+            lines.append("}")
+            if i > 0:
+                print()
+            print("\n".join(lines))
+        n_groups = len(groups)
+        g_label = "group" if n_groups == 1 else "groups"
+        print(f"\nTotal: {len(self)} simulations across {n_groups} {g_label}")
 
 
 class _Entry(NamedTuple):
@@ -557,7 +605,11 @@ class ParameterSetManager:
 
         if args.print_pars:
             entries = [args.name] if args.name else list(self._entries.keys())
-            for entry_name in entries:
+            for i, entry_name in enumerate(entries):
+                if len(entries) > 1:
+                    if i > 0:
+                        print()
+                    print(f"=== {entry_name} ===")
                 self._build(entry_name).print_summary()
             return None
 

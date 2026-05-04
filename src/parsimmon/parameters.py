@@ -16,7 +16,6 @@ import concurrent.futures
 import inspect
 import itertools
 import math
-import warnings
 from collections.abc import Mapping
 from pathlib import Path
 from typing import NamedTuple
@@ -573,21 +572,19 @@ class ParameterSetManager:
                 if self._cache.exists(cache_key):
                     stored_fn_hash = self._cache.get_fn_hash(cache_key)
                     if stored_fn_hash is not None and fn_hash != stored_fn_hash:
-                        warnings.warn(
-                            f"Simulation function has changed since the result "
-                            f"for key {cache_key} was cached. Using cached result.",
-                            stacklevel=3,
+                        # sim function changed — invalidate and rerun
+                        self._cache.delete(cache_key)
+                    else:
+                        entry_metadata["cache_key"] = cache_key
+                        self._cache.add_index_entry(entry_metadata)
+                        entries.append(
+                            _SimEntry(
+                                metadata=entry_metadata,
+                                cache_key=cache_key,
+                                backend=self._cache,
+                            )
                         )
-                    entry_metadata["cache_key"] = cache_key
-                    self._cache.add_index_entry(entry_metadata)
-                    entries.append(
-                        _SimEntry(
-                            metadata=entry_metadata,
-                            cache_key=cache_key,
-                            backend=self._cache,
-                        )
-                    )
-                    continue
+                        continue
 
             to_run.append((i, meta.pars, fn_metadata, entry_metadata, cache_key))
             entries.append(None)

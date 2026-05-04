@@ -100,11 +100,18 @@ def _canonical_repr(obj, _seen=None):
                 f"be stable across sessions."
             )
         try:
-            r2 = repr(copy.deepcopy(obj))
-        except Exception:
+            obj2 = copy.deepcopy(obj)
+        except (TypeError, RecursionError, ValueError):
             raise TypeError(
                 f"Cannot hash object of type {type(obj).__name__} for caching: "
                 f"deepcopy failed, so repr stability cannot be verified."
+            )
+        try:
+            r2 = repr(obj2)
+        except (TypeError, AttributeError, RuntimeError):
+            raise TypeError(
+                f"Cannot hash object of type {type(obj).__name__} for caching: "
+                f"repr failed on the copied object, so repr stability cannot be verified."
             )
         if r != r2:
             raise TypeError(
@@ -140,10 +147,7 @@ def is_project_local(module_path: Path, project_root: Path) -> bool:
         return False
 
     venv_markers = {".venv", "venv", "env", ".env", ".tox", ".nox"}
-    if rel.parts and rel.parts[0] in venv_markers:
-        return False
-
-    return True
+    return not (rel.parts and rel.parts[0] in venv_markers)
 
 
 def find_project_root(start: Path) -> Path:
@@ -156,51 +160,116 @@ def find_project_root(start: Path) -> Path:
     return start.resolve().parent
 
 
-def hash_function_chain(fn: Callable) -> str:
-    """AST-based identity hash of fn and its project-local transitive imports.
-
-    Uses AST dumps so whitespace/comment changes don't invalidate the
-    cache, but logic changes do.
-    """
-    module = inspect.getmodule(fn)
-    module_file = getattr(module, "__file__", None) if module else None
-    if module_file is None:
+def _fn_referenced_names(fn: Callable) -> set[str]:
+    """Return the set of global names referenced in *fn*'s body."""
+    try:
         src = inspect.getsource(fn)
+    except (OSError, TypeError):
+        return set()
+
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return set()
+
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            names.add(node.id)
+    return names
+
+
+def _resolve_fn_source_files(fn: Callable) -> list[Path]:
+    """Find project-local source files that *fn* depends on at runtime.
+
+    Walks *fn*'s AST for referenced names, resolves them through
+    ``fn.__globals__`` to real objects, then uses
+    ``inspect.getsourcefile`` to locate the file each lives in.
+    Returns only project-local files, excluding *fn*'s own module.
+    """
+    names = _fn_referenced_names(fn)
+    fn_file = inspect.getsourcefile(fn)
+    fn_globals = getattr(fn, "__globals__", {})
+
+    seeds: list[Path] = []
+    for name in names:
+        obj = fn_globals.get(name)
+        if obj is None:
+            continue
+        try:
+            src_file = inspect.getsourcefile(obj)
+        except (TypeError, OSError):
+            continue
+        if src_file is None:
+            continue
+
+        path = Path(src_file)
+        path_str = str(path)
+        if "/site-packages/" in path_str or "\\site-packages\\" in path_str:
+            continue
+        # skip fn's own file (the driver)
+        if fn_file and Path(fn_file).resolve() == path.resolve():
+            continue
+
+        seeds.append(path)
+    return seeds
+
+
+def hash_function_chain(fn: Callable) -> str:
+    """Content hash of the project-local files that *fn* depends on.
+
+    Walks *fn*'s body to discover the globals it references, resolves
+    them to source files, then transitively follows project-local
+    imports.  Hashes raw file contents so any edit (including
+    whitespace / comments) invalidates the cache.
+    """
+    seed_files = _resolve_fn_source_files(fn)
+
+    if not seed_files:
+        # no external project-local deps; fall back to fn source
+        try:
+            src = inspect.getsource(fn)
+        except (OSError, TypeError):
+            src = ""
         return hashlib.sha256(src.encode()).hexdigest()[:16]
 
-    project_root = find_project_root(Path(module_file))
-    visited: dict[str, str] = {}  # module_path -> ast_dump
-    _collect_module_asts(Path(module_file), project_root, visited, seen=set())
+    fn_file = inspect.getsourcefile(fn)
+    project_root = find_project_root(Path(fn_file)) if fn_file else Path.cwd()
 
-    combined = "\n".join(visited[k] for k in sorted(visited)).encode()
+    collected: dict[str, bytes] = {}  # abs_path -> raw content
+    for seed in seed_files:
+        _collect_local_files(seed, project_root, collected, seen=set())
+
+    combined = b"".join(collected[k] for k in sorted(collected))
     return hashlib.sha256(combined).hexdigest()[:16]
 
 
-def _collect_module_asts(module_path: Path, project_root: Path, visited: dict, seen: set) -> None:
-    abs_path = str(module_path.resolve())
+def _collect_local_files(file_path: Path, project_root: Path, collected: dict, seen: set) -> None:
+    """Recursively gather raw contents of *file_path* and its project-local imports."""
+    abs_path = str(file_path.resolve())
     if abs_path in seen:
         return
     seen.add(abs_path)
 
-    if not is_project_local(module_path, project_root):
+    if not is_project_local(file_path, project_root):
         return
 
     try:
-        source = module_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        content = file_path.read_bytes()
+    except OSError:
         return
 
+    collected[abs_path] = content
+
     try:
-        tree = ast.parse(source)
+        tree = ast.parse(content)
     except SyntaxError:
         return
-
-    visited[abs_path] = ast.dump(tree)
 
     for node in ast.walk(tree):
         dep_path = _resolve_import_node(node, project_root)
         if dep_path is not None:
-            _collect_module_asts(dep_path, project_root, visited, seen)
+            _collect_local_files(dep_path, project_root, collected, seen)
 
 
 def _resolve_import_node(node: ast.AST, project_root: Path) -> "Path | None":

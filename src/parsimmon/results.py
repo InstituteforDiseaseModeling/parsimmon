@@ -14,20 +14,21 @@ from typing import Any, Generic, Iterator, TypeVar
 
 try:
     import sciris as sc
+
     # confirm objdict is actually available; sciris stubs may not provide it
-    _HAS_SCIRIS = hasattr(sc, 'objdict')
+    _HAS_SCIRIS = hasattr(sc, "objdict")
 except ImportError:
     sc = None
     _HAS_SCIRIS = False
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 # sentinel distinguishing "not yet loaded" from None (a valid result value)
 _UNLOADED = object()
 
 
 def _get_nested(d, dotted_key):
-    for part in dotted_key.split('.'):
+    for part in dotted_key.split("."):
         if not isinstance(d, dict):
             raise KeyError(f"Cannot navigate into non-dict at '{part}' in '{dotted_key}'")
         if part not in d:
@@ -38,21 +39,21 @@ def _get_nested(d, dotted_key):
 
 def _get_meta_value(metadata, key):
     # checks top-level keys first, then falls into metadata['pars']
-    first = key.split('.')[0]
+    first = key.split(".")[0]
     if first in metadata:
         return _get_nested(metadata, key)
-    pars = metadata.get('pars', {})
+    pars = metadata.get("pars", {})
     return _get_nested(pars, key)
 
 
 class _SimEntry:
-    __slots__ = ('metadata', '_value', '_cache_key', '_backend')
+    __slots__ = ("metadata", "_value", "_cache_key", "_backend")
 
     def __init__(self, metadata, value=None, cache_key=None, backend=None):
-        self.metadata   = metadata
-        self._value     = _UNLOADED if value is None and cache_key is not None else value
+        self.metadata = metadata
+        self._value = _UNLOADED if value is None and cache_key is not None else value
         self._cache_key = cache_key
-        self._backend   = backend
+        self._backend = backend
 
     def resolve(self) -> Any:
         if self._value is _UNLOADED:
@@ -74,15 +75,15 @@ class SimResult(Generic[T]):
         self._entries = list(entries)
 
     @classmethod
-    def from_entries(cls, entries) -> 'SimResult[T]':
+    def from_entries(cls, entries) -> "SimResult[T]":
         return cls(entries)
 
     @classmethod
-    def load(cls, path_or_backend) -> 'SimResult':
+    def load(cls, path_or_backend) -> "SimResult":
         return cls.from_cache(path_or_backend)
 
     @classmethod
-    def from_cache(cls, path_or_backend) -> 'SimResult':
+    def from_cache(cls, path_or_backend) -> "SimResult":
         from .cache import SimFileCache, SimCacheBase  # type: ignore[import]
 
         if isinstance(path_or_backend, (str, Path)):
@@ -90,28 +91,19 @@ class SimResult(Generic[T]):
         elif isinstance(path_or_backend, SimCacheBase):
             backend = path_or_backend
         else:
-            raise TypeError(
-                f"Expected str, Path, or SimCacheBase, got {type(path_or_backend).__name__}"
-            )
+            raise TypeError(f"Expected str, Path, or SimCacheBase, got {type(path_or_backend).__name__}")
 
         index = backend.index()
-        entries = [
-            _SimEntry(metadata=entry, cache_key=entry['cache_key'], backend=backend)
-            for entry in index
-        ]
+        entries = [_SimEntry(metadata=entry, cache_key=entry["cache_key"], backend=backend) for entry in index]
         return cls(entries)
 
     @classmethod
-    def from_values(cls, values, metadata_list) -> 'SimResult':
+    def from_values(cls, values, metadata_list) -> "SimResult":
         if len(values) != len(metadata_list):
             raise ValueError(
-                f"values and metadata_list must have the same length "
-                f"({len(values)} vs {len(metadata_list)})"
+                f"values and metadata_list must have the same length ({len(values)} vs {len(metadata_list)})"
             )
-        entries = [
-            _SimEntry(metadata=meta, value=val)
-            for val, meta in zip(values, metadata_list)
-        ]
+        entries = [_SimEntry(metadata=meta, value=val) for val, meta in zip(values, metadata_list)]
         return cls(entries)
 
     def __iter__(self) -> Iterator[T]:
@@ -135,34 +127,33 @@ class SimResult(Generic[T]):
     def __getattr__(self, name: str):
         # private/dunder names skip group lookup to prevent infinite recursion
         # during __init__ and deepcopy before _entries exists
-        if name.startswith('_') or name in type(self).__dict__:
+        if name.startswith("_") or name in type(self).__dict__:
             raise AttributeError(name)
 
-        parameter_sets = {e.metadata.get('parameter_set') for e in self._entries
-                          if e.metadata.get('parameter_set') is not None}
-        groups = {e.metadata.get('group') for e in self._entries
-                  if e.metadata.get('group') is not None}
+        parameter_sets = {
+            e.metadata.get("parameter_set") for e in self._entries if e.metadata.get("parameter_set") is not None
+        }
+        groups = {e.metadata.get("group") for e in self._entries if e.metadata.get("group") is not None}
 
         # if entries span multiple parameter sets, resolve by parameter_set first
         if len(parameter_sets) > 1 and name in parameter_sets:
-            filtered = [e for e in self._entries if e.metadata.get('parameter_set') == name]
+            filtered = [e for e in self._entries if e.metadata.get("parameter_set") == name]
             return SimResult(filtered)
 
         if name in groups:
-            filtered = [e for e in self._entries if e.metadata.get('group') == name]
+            filtered = [e for e in self._entries if e.metadata.get("group") == name]
             return SimResult(filtered)
 
         available = sorted(parameter_sets | groups)
         raise AttributeError(
-            f"'{type(self).__name__}' has no attribute '{name}'; "
-            f"available parameter sets / groups: {available}"
+            f"'{type(self).__name__}' has no attribute '{name}'; available parameter sets / groups: {available}"
         )
 
     @property
     def groups(self):
         buckets = {}
         for entry in self._entries:
-            key = entry.metadata.get('group')
+            key = entry.metadata.get("group")
             buckets.setdefault(key, []).append(entry)
         result = {k: SimResult(v) for k, v in buckets.items()}
         if _HAS_SCIRIS:
@@ -176,22 +167,16 @@ class SimResult(Generic[T]):
             buckets.setdefault(val, []).append(entry)
         return {k: SimResult(v) for k, v in buckets.items()}
 
-    def filter(self, key_or_fn, value=None) -> 'SimResult[T]':
+    def filter(self, key_or_fn, value=None) -> "SimResult[T]":
         if callable(key_or_fn):
-            filtered = [
-                e for e in self._entries
-                if key_or_fn(e.metadata.get('pars', {}), e.metadata)
-            ]
+            filtered = [e for e in self._entries if key_or_fn(e.metadata.get("pars", {}), e.metadata)]
         else:
-            filtered = [
-                e for e in self._entries
-                if _get_meta_value(e.metadata, key_or_fn) == value
-            ]
+            filtered = [e for e in self._entries if _get_meta_value(e.metadata, key_or_fn) == value]
         return SimResult(filtered)
 
     @property
     def pars(self):
-        return [e.metadata.get('pars', {}) for e in self._entries]
+        return [e.metadata.get("pars", {}) for e in self._entries]
 
     @property
     def metadata(self):
@@ -199,10 +184,9 @@ class SimResult(Generic[T]):
 
     def __repr__(self) -> str:
         n = len(self._entries)
-        group_names = list(dict.fromkeys(
-            e.metadata.get('group') for e in self._entries
-            if e.metadata.get('group') is not None
-        ))
+        group_names = list(
+            dict.fromkeys(e.metadata.get("group") for e in self._entries if e.metadata.get("group") is not None)
+        )
         if group_names:
             return f"SimResult(n={n}, groups={group_names!r})"
         return f"SimResult(n={n})"

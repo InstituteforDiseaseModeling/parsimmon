@@ -1,43 +1,25 @@
 """Content-addressed caching for parsimmon simulation runs."""
 
 import ast
+import copy
 import hashlib
 import importlib.util
 import inspect
 import os
-import warnings
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-
-
-def _pickle_save(path, obj):
-    import pickle
-
-    with open(path, "wb") as f:
-        pickle.dump(obj, f)
-
-
-def _pickle_load(path):
-    import pickle
-
-    with open(path, "rb") as f:
-        return pickle.load(f)
+import sciris as sc
 
 
 def _make_default_serializers():
-    try:
-        import sciris as sc
-
-        return (
-            lambda path, obj: sc.save(str(path), obj, verbose=False),
-            lambda path: sc.load(str(path)),
-        )
-    except ImportError:
-        return _pickle_save, _pickle_load
+    return (
+        lambda path, obj: sc.save(str(path), obj, verbose=False),
+        lambda path: sc.load(str(path)),
+    )
 
 
 def _canonical_repr(obj, _seen=None):
@@ -102,13 +84,32 @@ def _canonical_repr(obj, _seen=None):
         if isinstance(obj, bytes):
             return b"bytes:" + obj
 
+        if callable(obj):
+            raise TypeError(
+                f"Cannot hash callable {obj!r} for caching. "
+                f"Parameterize function selection via a bool, number, or name "
+                f"and resolve it to the callable in your own code."
+            )
+
+        # general fallback: accept any type whose repr is stable across copies
         r = repr(obj)
         if "0x" in r:
-            warnings.warn(
-                f"repr of {type(obj).__name__} contains '0x', which suggests a memory "
-                f"address. The cache key for this object will not be stable across "
-                f"Python sessions: {r!r}",
-                stacklevel=3,
+            raise TypeError(
+                f"Cannot hash object of type {type(obj).__name__} for caching: "
+                f"repr contains a memory address, so the cache key would not "
+                f"be stable across sessions."
+            )
+        try:
+            r2 = repr(copy.deepcopy(obj))
+        except Exception:
+            raise TypeError(
+                f"Cannot hash object of type {type(obj).__name__} for caching: "
+                f"deepcopy failed, so repr stability cannot be verified."
+            )
+        if r != r2:
+            raise TypeError(
+                f"Cannot hash object of type {type(obj).__name__} for caching: "
+                f"repr is not stable across copies ({r!r} != {r2!r})."
             )
         return f"obj:{r}".encode()
 
@@ -197,12 +198,12 @@ def _collect_module_asts(module_path: Path, project_root: Path, visited: dict, s
     visited[abs_path] = ast.dump(tree)
 
     for node in ast.walk(tree):
-        dep_path = _resolve_import_node(node, module_path, project_root)
+        dep_path = _resolve_import_node(node, project_root)
         if dep_path is not None:
             _collect_module_asts(dep_path, project_root, visited, seen)
 
 
-def _resolve_import_node(node: ast.AST, current_file: Path, project_root: Path) -> "Path | None":
+def _resolve_import_node(node: ast.AST, project_root: Path) -> "Path | None":
     if isinstance(node, ast.Import):
         names = [alias.name for alias in node.names]
     elif isinstance(node, ast.ImportFrom):

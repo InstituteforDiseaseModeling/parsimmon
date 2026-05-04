@@ -405,6 +405,51 @@ def test_cache_get_fn_hash(tmp_path):
 
 
 @sc.timer()
+def test_hash_rejects_callable():
+    def my_fn(x):
+        return x
+
+    with pytest.raises(TypeError, match="Cannot hash callable"):
+        hash_params({"fn": my_fn})
+
+    with pytest.raises(TypeError, match="Cannot hash callable"):
+        hash_params({"fn": lambda x: x})
+
+    with pytest.raises(TypeError, match="Cannot hash callable"):
+        hash_params({"nested": {"fn": print}})
+
+
+@sc.timer()
+def test_hash_rejects_unstable_repr():
+    class Custom:
+        pass
+
+    with pytest.raises(TypeError, match="memory address"):
+        hash_params({"obj": Custom()})
+
+    with pytest.raises(TypeError, match="memory address"):
+        hash_params({"nested": [Custom()]})
+
+
+@sc.timer()
+def test_hash_accepts_stable_repr():
+    """Types with a stable repr that survives deepcopy are cacheable."""
+    from decimal import Decimal
+    from fractions import Fraction
+
+    h1 = hash_params({"price": Decimal("19.99")})
+    h2 = hash_params({"price": Decimal("19.99")})
+    assert h1 == h2, "Decimal with same value should hash identically"
+
+    h3 = hash_params({"price": Decimal("20.00")})
+    assert h1 != h3, "Different Decimal values should hash differently"
+
+    h4 = hash_params({"ratio": Fraction(1, 3)})
+    h5 = hash_params({"ratio": Fraction(1, 3)})
+    assert h4 == h5, "Fraction with same value should hash identically"
+
+
+@sc.timer()
 def test_base_not_implemented():
     base = SimCacheBase()
     dummy_meta = {"cache_key": "x", "label": "test"}
@@ -466,6 +511,9 @@ if __name__ == "__main__":
     test_find_project_root_git()
     test_fn_hash_deterministic()
     test_fn_hash_different_functions()
+    test_hash_rejects_callable()
+    test_hash_rejects_unstable_repr()
+    test_hash_accepts_stable_repr()
     test_base_not_implemented()
 
     T.toc()

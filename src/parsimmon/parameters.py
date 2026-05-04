@@ -224,11 +224,11 @@ class ParameterSet:
             node = target
             for key in path[:-1]:
                 if not isinstance(node, dict) or key not in node:
+                    node = None
                     break
                 node = node[key]
-            else:
-                if isinstance(node, dict):
-                    node.pop(path[-1], None)
+            if isinstance(node, dict):
+                node.pop(path[-1], None)
 
     @property
     def groups(self):
@@ -236,8 +236,7 @@ class ParameterSet:
 
     def __iter__(self):
         sim_id = 1
-        for name in self._groups:
-            overrides = self._groups[name]
+        for name, overrides in self._groups.items():
             merged = _deep_update(sc.dcp(self._base), sc.dcp(overrides))
             for group_id, (_, updates) in enumerate(self._expand(merged), start=1):
                 yield sc.objdict(group=name, sim_id=sim_id, group_id=group_id, pars=updates)
@@ -343,8 +342,7 @@ class ParameterSet:
         return math.prod(sizes) if sizes else 1
 
     def print_summary(self):
-        for name in self._groups:
-            overrides = self._groups[name]
+        for name, overrides in self._groups.items():
             merged = _deep_update(sc.dcp(self._base), sc.dcp(overrides))
             resolved = _resolve_markers(merged)
             print(f"\n--- {name} ---")
@@ -557,6 +555,7 @@ class ParameterSetManager:
         for i, meta in enumerate(sim_points):
             fn_metadata = {"parameter_set": name, "group": meta.group, "sim_id": meta.sim_id, "group_id": meta.group_id}
             entry_metadata = {"pars": sc.dcp(meta.pars), "fn_hash": fn_hash} | fn_metadata
+            cache_key = None
 
             if self._cache is not None:
                 cache_key = compute_cache_key(meta.pars)
@@ -577,12 +576,10 @@ class ParameterSetManager:
                             backend=self._cache,
                         )
                     )
-                else:
-                    to_run.append((i, meta.pars, fn_metadata, entry_metadata, cache_key))
-                    entries.append(None)
-            else:
-                to_run.append((i, meta.pars, fn_metadata, entry_metadata, None))
-                entries.append(None)
+                    continue
+
+            to_run.append((i, meta.pars, fn_metadata, entry_metadata, cache_key))
+            entries.append(None)
 
         if to_run:
             n_cached = len(sim_points) - len(to_run)

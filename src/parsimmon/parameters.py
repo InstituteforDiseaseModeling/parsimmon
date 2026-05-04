@@ -12,10 +12,12 @@ Builders must return ``Mapping | ParameterSet`` (never None).
 """
 
 import argparse
+import ast
 import concurrent.futures
 import inspect
 import itertools
 import math
+import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -64,9 +66,6 @@ def _get_nested(d, dotted_key):
             raise KeyError(f"Key '{part}' not found while resolving '{dotted_key}'")
         d = d[part]
     return d
-
-
-_UNRESOLVED = object()
 
 
 def _resolve_source_for_display(sk, root, range_paths, link_path):
@@ -251,6 +250,8 @@ class ParameterSet:
 
     @staticmethod
     def _expand(merged):
+        _UNRESOLVED = object()
+
         fixed = {}
         ranges = []
         links = []
@@ -472,11 +473,16 @@ class ParameterSetManager:
                 raise ValueError(f"Invalid override {raw!r}; expected key=value")
             key, val_str = raw.split("=", 1)
             path = tuple(key.split("."))
-            try:
-                existing = _get_nested(ps._base, key)
-                val = _coerce(val_str, type(existing))
-            except (KeyError, ValueError):
-                val = _auto_coerce(val_str)
+
+            range_val = _parse_range_expr(val_str)
+            if range_val is not None:
+                val = range_val
+            else:
+                try:
+                    existing = _get_nested(ps._base, key)
+                    val = _coerce(val_str, type(existing))
+                except (KeyError, ValueError):
+                    val = _auto_coerce(val_str)
 
             _set_nested(ps._base, path, val)
 
@@ -544,7 +550,6 @@ class ParameterSetManager:
             parser.add_argument(*extra_args, **extra_kwargs)
 
         args = parser.parse_args(argv)
-        self.args = args
 
         if args.list:
             self._print_list(args.name)
@@ -665,6 +670,30 @@ class ParameterSetManager:
         if self._cache is None:
             raise RuntimeError("Caching is not enabled; pass cache=True to ParameterSetManager")
         return SimResult.from_cache(self._cache)
+
+
+def _parse_range_expr(val_str):
+    """Parse a CLI value like ``arange(4)`` or ``iter(1,2,3)`` into a _ParamRange.
+
+    Returns a _ParamRange on match, or None if *val_str* is not a range expression.
+    """
+    m = re.match(r"^(arange|linspace|logspace|iter)\((.+)\)$", val_str.strip())
+    if not m:
+        return None
+    func_name, args_str = m.group(1), m.group(2)
+
+    try:
+        args = ast.literal_eval(f"({args_str},)")
+    except (ValueError, SyntaxError) as exc:
+        raise ValueError(f"Cannot parse arguments in {val_str!r}") from exc
+
+    func = getattr(ParameterSet, func_name)
+    if func_name == "iter":
+        # iter(iterable) takes one arg; bare multi-args are convenience sugar
+        if len(args) == 1 and isinstance(args[0], (list, tuple)):
+            return func(args[0])
+        return func(args)
+    return func(*args)
 
 
 def _coerce(val_str, target_type):

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import sciris as sc
 
-from parsimmon.parameters import ParameterSet, ParameterSetManager, _ParamLink
+from parsimmon.parameters import ParameterSet, ParameterSetManager, _ParamLink, _ParamRange
 
 
 @sc.timer()
@@ -393,6 +393,57 @@ def test_manager_cli_overrides():
 
 
 @sc.timer()
+def test_manager_cli_range_overrides():
+    pm = ParameterSetManager()
+
+    @pm.add
+    def grp(ps):
+        ps.add({"seed": 0, "beta": 0.5})
+        ps.add("grp", {})
+        return ps
+
+    # arange — should expand into multiple sim points
+    ps = pm._build("grp", cli_overrides=["seed=arange(3)"])
+    results = list(ps)
+    seeds = [r.pars["seed"] for r in results]
+    assert seeds == [0, 1, 2], f"Expected [0, 1, 2], got {seeds}"
+
+    # linspace
+    ps = pm._build("grp", cli_overrides=["beta=linspace(0, 1, 3)"])
+    results = list(ps)
+    betas = [r.pars["beta"] for r in results]
+    assert betas == [0.0, 0.5, 1.0], f"Expected [0.0, 0.5, 1.0], got {betas}"
+
+    # logspace
+    ps = pm._build("grp", cli_overrides=["beta=logspace(0, 2, 3)"])
+    results = list(ps)
+    betas = [r.pars["beta"] for r in results]
+    assert betas == [1.0, 10.0, 100.0], f"Expected [1.0, 10.0, 100.0], got {betas}"
+
+    # iter with explicit list
+    ps = pm._build("grp", cli_overrides=["seed=iter([10, 20, 30])"])
+    results = list(ps)
+    seeds = [r.pars["seed"] for r in results]
+    assert seeds == [10, 20, 30], f"Expected [10, 20, 30], got {seeds}"
+
+    # iter with bare comma-separated args (convenience sugar)
+    ps = pm._build("grp", cli_overrides=["seed=iter(10, 20, 30)"])
+    results = list(ps)
+    seeds = [r.pars["seed"] for r in results]
+    assert seeds == [10, 20, 30], f"Expected [10, 20, 30], got {seeds}"
+
+    # range override combined with a scalar override
+    ps = pm._build("grp", cli_overrides=["seed=arange(2)", "beta=0.9"])
+    results = list(ps)
+    assert len(results) == 2
+    assert all(r.pars["beta"] == 0.9 for r in results)
+
+    # _base should hold a _ParamRange, not a plain value
+    ps = pm._build("grp", cli_overrides=["seed=arange(3)"])
+    assert isinstance(ps._base["seed"], _ParamRange)
+
+
+@sc.timer()
 def test_manager_zero_arg_builder():
     pm = ParameterSetManager()
 
@@ -535,6 +586,7 @@ if __name__ == "__main__":
     test_manager_extend()
     test_manager_extend_defaults()
     test_manager_cli_overrides()
+    test_manager_cli_range_overrides()
     test_manager_zero_arg_builder()
     test_manager_extend_chain()
     test_manager_return_none_raises()

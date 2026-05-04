@@ -480,21 +480,52 @@ class ParameterSetManager:
 
             _set_nested(ps._base, path, val)
 
+    def _print_list(self, name=None):
+        entries = [name] if name else list(self._entries.keys())
+        single = name is not None
+
+        if not single:
+            filename = Path(sys.argv[0]).name
+            n_sets = len(entries)
+            sets_label = "parameter set" if n_sets == 1 else "parameter sets"
+            print(f"{filename} ({n_sets} {sets_label})")
+
+        for i, entry_name in enumerate(entries):
+            ps_entry = self._build(entry_name)
+            groups = ps_entry.groups
+            counts = [ps_entry._count(ps_entry._merged(g)) for g in groups]
+            total = sum(counts)
+            n_groups = len(groups)
+            g_label = "group" if n_groups == 1 else "groups"
+            j_label = "job" if total == 1 else "jobs"
+            parent = self._entries[entry_name].parent_name
+            extends = f", extends {parent}" if parent else ""
+
+            if single:
+                entry_pre, child_pre = "", ""
+            else:
+                last = i == len(entries) - 1
+                entry_pre = "└── " if last else "├── "
+                child_pre = "    " if last else "│   "
+
+            print(f"{entry_pre}{entry_name} ({n_groups} {g_label}, {total} {j_label}{extends})")
+            for j, (g, c) in enumerate(zip(groups, counts)):
+                g_con = "└── " if j == len(groups) - 1 else "├── "
+                print(f"{child_pre}{g_con}{g}: {c}")
+
     def run(self, fn=None, jobs=None, argv=None):
         parser = argparse.ArgumentParser()
         default = self._default
-        p_kwargs = {"choices": list(self._entries.keys()), "help": "Parameter set to run"}
-        if default is not None:
-            p_kwargs["default"] = default
-        else:
-            p_kwargs["required"] = True
-        parser.add_argument("-p", "--parameter-set", **p_kwargs)
+        parser.add_argument(
+            "name", nargs="?", default=None, choices=list(self._entries.keys()), help="Parameter set to run"
+        )
         parser.add_argument(
             "-a",
             "--args",
             action="append",
+            nargs="+",
             default=[],
-            help="Override key=value (repeatable)",
+            help="Override key=value pairs",
         )
         parser.add_argument(
             "--print",
@@ -504,12 +535,10 @@ class ParameterSetManager:
         )
         parser.add_argument(
             "--list",
-            nargs="?",
-            const=True,
-            default=None,
-            help="List parameter sets, or show group breakdown for a given set",
+            action="store_true",
+            help="List parameter sets and exit",
         )
-        parser.add_argument("--no-plot", action="store_true", help="Skip post-run analysis/plotting")
+        parser.add_argument("-s", "--skip-analysis", action="store_true", help="Skip post-run analysis/plotting")
 
         for extra_args, extra_kwargs in self._extra_args:
             parser.add_argument(*extra_args, **extra_kwargs)
@@ -517,55 +546,26 @@ class ParameterSetManager:
         args = parser.parse_args(argv)
         self.args = args
 
-        if args.list is not None:
-            single = args.list is not True
-            if single:
-                if args.list not in self._entries:
-                    parser.error(f"unknown parameter set: {args.list!r}")
-                entries = [args.list]
-            else:
-                entries = list(self._entries.keys())
-                filename = Path(sys.argv[0]).name
-                n_sets = len(entries)
-                sets_label = "parameter set" if n_sets == 1 else "parameter sets"
-                print(f"{filename} ({n_sets} {sets_label})")
-
-            for i, entry_name in enumerate(entries):
-                ps_entry = self._build(entry_name)
-                groups = ps_entry.groups
-                counts = [ps_entry._count(ps_entry._merged(g)) for g in groups]
-                total = sum(counts)
-                n_groups = len(groups)
-                g_label = "group" if n_groups == 1 else "groups"
-                j_label = "job" if total == 1 else "jobs"
-                parent = self._entries[entry_name].parent_name
-                extends = f", extends {parent}" if parent else ""
-
-                if single:
-                    entry_pre, child_pre = "", ""
-                else:
-                    last = i == len(entries) - 1
-                    entry_pre = "└── " if last else "├── "
-                    child_pre = "    " if last else "│   "
-
-                print(f"{entry_pre}{entry_name} ({n_groups} {g_label}, {total} {j_label}{extends})")
-                for j, (g, c) in enumerate(zip(groups, counts)):
-                    g_con = "└── " if j == len(groups) - 1 else "├── "
-                    print(f"{child_pre}{g_con}{g}: {c}")
-
+        if args.list:
+            self._print_list(args.name)
             return None
-
-        name = args.parameter_set
-        ps = self._build(name, cli_overrides=args.args or None)
 
         if args.print_pars:
-            ps.print_summary()
+            entries = [args.name] if args.name else list(self._entries.keys())
+            for entry_name in entries:
+                self._build(entry_name).print_summary()
             return None
+
+        name = args.name or default
+        if name is None:
+            parser.error("the following arguments are required: name")
+        overrides = [v for group in args.args for v in group] or None
+        ps = self._build(name, cli_overrides=overrides)
 
         if fn is None:
             raise ValueError("fn (simulation function) is required to run simulations")
 
-        return self._execute(name, ps, fn, jobs, run_analysis=not args.no_plot)
+        return self._execute(name, ps, fn, jobs, run_analysis=not args.skip_analysis)
 
     def _execute(self, name, ps, fn, jobs=None, run_analysis=True):
         from .results import SimResult, _SimEntry

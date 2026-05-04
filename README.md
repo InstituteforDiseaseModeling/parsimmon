@@ -71,8 +71,8 @@ Run from the command line:
 
 ```bash
 python run_sim.py                   # runs last registered parameter set
-python run_sim.py -p base           # run a specific parameter set
-python run_sim.py --print           # print parameter summary and exit
+python run_sim.py base              # run a specific parameter set
+python run_sim.py --print           # print all parameter summaries and exit
 python run_sim.py --count           # print total sim count and exit
 ```
 
@@ -173,7 +173,7 @@ def main(ps):
 ```python
 @pm.analysis('experiment')
 def plot_experiment(results):
-    # called automatically after pm.run() unless --no-plot is passed
+    # called automatically after pm.run() unless --skip-analysis is passed
     for r in results:
         print(r)
 ```
@@ -189,12 +189,12 @@ results = pm.run(fn, jobs=4)     # parallel via ProcessPoolExecutor
 
 | Flag | Effect |
 |------|--------|
-| `-p NAME` / `--parameter-set NAME` | Select which registered set to run |
-| `-a key=value` | Override a base parameter (repeatable) |
-| `--print` | Print parameter summary and exit |
+| `NAME` | Positional: select which registered set to run |
+| `-a key=value [...]` | Override base parameters (multiple allowed) |
+| `--print` | Print parameter summaries and exit (one if NAME given, else all) |
 | `--count` | Print simulation count and exit |
-| `--list` | List all registered parameter sets and exit |
-| `--no-plot` | Skip post-run analysis |
+| `--list` | List parameter sets and exit (details if NAME given, else all) |
+| `-s` / `--skip-analysis` | Skip post-run analysis |
 
 Extra CLI arguments can be registered with `pm.add_argument(*args, **kwargs)`,
 which forwards directly to `argparse`.

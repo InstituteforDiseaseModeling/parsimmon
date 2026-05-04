@@ -478,7 +478,7 @@ def _make_list_manager():
 def test_list_bare(capsys, monkeypatch):
     monkeypatch.setattr("sys.argv", ["sim.py"])
     pm = _make_list_manager()
-    result = pm.run(argv=["--list", "-p", "base"])
+    result = pm.run(argv=["--list"])
     assert result is None
 
     lines = capsys.readouterr().out.splitlines()
@@ -498,7 +498,7 @@ def test_list_bare(capsys, monkeypatch):
 def test_list_single(capsys, monkeypatch):
     monkeypatch.setattr("sys.argv", ["sim.py"])
     pm = _make_list_manager()
-    result = pm.run(argv=["--list", "base", "-p", "base"])
+    result = pm.run(argv=["--list", "base"])
     assert result is None
 
     lines = capsys.readouterr().out.splitlines()

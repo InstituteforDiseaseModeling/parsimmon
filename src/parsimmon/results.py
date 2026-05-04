@@ -12,14 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Generic, Iterator, TypeVar
 
-try:
-    import sciris as sc
-
-    # confirm objdict is actually available; sciris stubs may not provide it
-    _HAS_SCIRIS = hasattr(sc, "objdict")
-except ImportError:
-    sc = None
-    _HAS_SCIRIS = False
+import sciris as sc
 
 T = TypeVar("T")
 
@@ -38,19 +31,18 @@ def _get_nested(d, dotted_key):
 
 
 def _get_meta_value(metadata, key):
-    # checks top-level keys first, then falls into metadata['pars']
+    # checks top-level keys first, then falls into metadata.pars
     first = key.split(".")[0]
     if first in metadata:
         return _get_nested(metadata, key)
-    pars = metadata.get("pars", {})
-    return _get_nested(pars, key)
+    return _get_nested(metadata.pars, key)
 
 
 class _SimEntry:
     __slots__ = ("metadata", "_value", "_cache_key", "_backend")
 
     def __init__(self, metadata, value=None, cache_key=None, backend=None):
-        self.metadata = metadata
+        self.metadata = metadata if isinstance(metadata, sc.objdict) else sc.objdict(metadata)
         self._value = _UNLOADED if value is None and cache_key is not None else value
         self._cache_key = cache_key
         self._backend = backend
@@ -130,18 +122,16 @@ class SimResult(Generic[T]):
         if name.startswith("_") or name in type(self).__dict__:
             raise AttributeError(name)
 
-        parameter_sets = {
-            e.metadata.get("parameter_set") for e in self._entries if e.metadata.get("parameter_set") is not None
-        }
-        groups = {e.metadata.get("group") for e in self._entries if e.metadata.get("group") is not None}
+        parameter_sets = {e.metadata.parameter_set for e in self._entries}
+        groups = {e.metadata.group for e in self._entries}
 
         # if entries span multiple parameter sets, resolve by parameter_set first
         if len(parameter_sets) > 1 and name in parameter_sets:
-            filtered = [e for e in self._entries if e.metadata.get("parameter_set") == name]
+            filtered = [e for e in self._entries if e.metadata.parameter_set == name]
             return SimResult(filtered)
 
         if name in groups:
-            filtered = [e for e in self._entries if e.metadata.get("group") == name]
+            filtered = [e for e in self._entries if e.metadata.group == name]
             return SimResult(filtered)
 
         available = sorted(parameter_sets | groups)
@@ -153,12 +143,10 @@ class SimResult(Generic[T]):
     def groups(self):
         buckets = {}
         for entry in self._entries:
-            key = entry.metadata.get("group")
+            key = entry.metadata.group
             buckets.setdefault(key, []).append(entry)
         result = {k: SimResult(v) for k, v in buckets.items()}
-        if _HAS_SCIRIS:
-            return sc.objdict(result)
-        return result
+        return sc.objdict(result)
 
     def group(self, key: str):
         buckets = {}
@@ -169,14 +157,14 @@ class SimResult(Generic[T]):
 
     def filter(self, key_or_fn, value=None) -> "SimResult[T]":
         if callable(key_or_fn):
-            filtered = [e for e in self._entries if key_or_fn(e.metadata.get("pars", {}), e.metadata)]
+            filtered = [e for e in self._entries if key_or_fn(e.metadata.pars, e.metadata)]
         else:
             filtered = [e for e in self._entries if _get_meta_value(e.metadata, key_or_fn) == value]
         return SimResult(filtered)
 
     @property
     def pars(self):
-        return [e.metadata.get("pars", {}) for e in self._entries]
+        return [e.metadata.pars for e in self._entries]
 
     @property
     def metadata(self):
@@ -184,9 +172,7 @@ class SimResult(Generic[T]):
 
     def __repr__(self) -> str:
         n = len(self._entries)
-        group_names = list(
-            dict.fromkeys(e.metadata.get("group") for e in self._entries if e.metadata.get("group") is not None)
-        )
+        group_names = list(dict.fromkeys(e.metadata.group for e in self._entries))
         if group_names:
             return f"SimResult(n={n}, groups={group_names!r})"
         return f"SimResult(n={n})"

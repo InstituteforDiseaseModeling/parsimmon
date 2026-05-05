@@ -522,6 +522,7 @@ class ParameterSetManager:
     def _register(self, fn, name, parent_name=None, default=False):
         self._entries[name] = _Entry(fn, parent_name)
         fn._pm_name = name
+        fn.analysis = self.analysis(name)
         if default:
             self._default_name = name
         return fn
@@ -532,7 +533,9 @@ class ParameterSetManager:
             return name
         raise KeyError(f"Function {fn.__name__!r} is not registered")
 
-    def analysis(self, name):
+    def analysis(self, fn_or_name):
+        name = self._fn_to_name(fn_or_name) if callable(fn_or_name) else fn_or_name
+
         def decorator(fn):
             self._analyses[name] = fn
             return fn

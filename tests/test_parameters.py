@@ -559,6 +559,57 @@ def test_list_single(capsys, monkeypatch):
     assert len(lines) == 3
 
 
+@sc.timer()
+def test_analysis_with_string_name():
+    pm = ParameterSetManager()
+
+    @pm.add
+    def base(ps):
+        ps.add("G", {"a": 1})
+        return ps
+
+    @pm.analysis("base")
+    def analyze(result):
+        pass
+
+    assert "base" in pm._analyses
+    assert pm._analyses["base"] is analyze
+
+
+@sc.timer()
+def test_analysis_with_function_ref():
+    pm = ParameterSetManager()
+
+    @pm.add
+    def base(ps):
+        ps.add("G", {"a": 1})
+        return ps
+
+    @pm.analysis(base)
+    def analyze(result):
+        pass
+
+    assert "base" in pm._analyses
+    assert pm._analyses["base"] is analyze
+
+
+@sc.timer()
+def test_analysis_on_function():
+    pm = ParameterSetManager()
+
+    @pm.add
+    def base(ps):
+        ps.add("G", {"a": 1})
+        return ps
+
+    @base.analysis
+    def analyze(result):
+        pass
+
+    assert "base" in pm._analyses
+    assert pm._analyses["base"] is analyze
+
+
 if __name__ == "__main__":
     T = sc.timer()
 

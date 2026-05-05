@@ -12,9 +12,11 @@ A **low-friction** library for defining, sweeping, and caching simulation parame
   For LLM-guided setup in your simulation project, copy this to your coding agent:
 
   ```
-  Fetch and follow the instructions at https://github.com/InstituteforDiseaseModeling/parsimmon/blob/main/llm_install.md
+  Fetch and follow the instructions at https://github.com/InstituteforDiseaseModeling/parsimmon/blob/main/docs/llm_install.md
   ```
 </details>
+
+![Persimmon by DianaWolfskin on Pixabay](docs/persimmon_small.png)
 
 ## Install
 
